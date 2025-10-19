@@ -54,7 +54,6 @@ adjust_visibility()
 ui.set_callback(ground_legs, adjust_visibility)
 ui.set_callback(animations_enabled, adjust_visibility)
 
--- Animation breaker runs every frame before render
 -- Works instantly after shot because pre_render hooks pose parameters before engine applies them
 local function animations_pre_render()
     if not ui.get(animations_enabled) then return end
@@ -141,6 +140,5 @@ local function animations_pre_render()
     end
 end
 
--- Hook to pre_render event - executes every frame before rendering
--- This is why breaker works instantly after shot
 client.set_event_callback("pre_render", animations_pre_render)
+
