@@ -1,13 +1,16 @@
--- kinda old release
--- decided to post it on github since im planning to rework the entire thing
-
 local g_esp_data = { }
 local g_sim_ticks, g_net_data = { }, { }
 
--- Glow effect settings
+-- Text glow settings
 local glow_enabled = ui.new_checkbox("RAGE", "Other", "Enable Glow Effect")
 local glow_intensity = ui.new_slider("RAGE", "Other", "Glow Intensity", 0, 15, 6, true, "%", 1, {})
 local glow_radius = ui.new_slider("RAGE", "Other", "Glow Radius", 1, 20, 6, true, "px", 1, {})
+
+-- Box color selection
+local box_color_preset = ui.new_combobox("RAGE", "Other", "Box Color", {
+    "Blue (Default)", "Red", "Green", "Yellow", "Purple", "Orange", "Cyan", "Pink", "White", "Lime", "Magenta", "Aqua"
+})
+
 
 local globals_tickinterval = globals.tickinterval
 local entity_is_enemy = entity.is_enemy
@@ -35,7 +38,59 @@ local vec_substract = function(a, b) return { a[1] - b[1], a[2] - b[2], a[3] - b
 local vec_add = function(a, b) return { a[1] + b[1], a[2] + b[2], a[3] + b[3] } end
 local vec_lenght = function(x, y) return (x * x + y * y) end
 
--- Function to render text with glow 
+-- Get box color
+local function get_box_color()
+    local preset = ui.get(box_color_preset)
+    
+    -- Color presets
+    local colors = {
+        ["Blue (Default)"] = {47, 117, 221, 255},
+        ["Red"] = {255, 45, 45, 255},
+        ["Green"] = {45, 255, 45, 255},
+        ["Yellow"] = {255, 255, 45, 255},
+        ["Purple"] = {221, 45, 255, 255},
+        ["Orange"] = {255, 165, 0, 255},
+        ["Cyan"] = {45, 255, 255, 255},
+        ["Pink"] = {255, 45, 255, 255},
+        ["White"] = {255, 255, 255, 255},
+        ["Lime"] = {128, 255, 0, 255},
+        ["Magenta"] = {255, 0, 255, 255},
+        ["Aqua"] = {0, 255, 255, 255}
+    }
+    
+    local color = colors[preset] or colors["Blue (Default)"]
+    return color[1], color[2], color[3], color[4]
+end
+
+-- Render 2D box
+local function render_simple_box(x1, y1, x2, y2, r, g, b, a)
+    -- Check if coordinates are valid (not nil)
+    if not x1 or not y1 or not x2 or not y2 then
+        return
+    end
+    
+    -- Draw box lines
+    line(x1, y1, x2, y1, r, g, b, a) -- Top
+    line(x2, y1, x2, y2, r, g, b, a) -- Right
+    line(x2, y2, x1, y2, r, g, b, a) -- Bottom
+    line(x1, y2, x1, y1, r, g, b, a) -- Left
+end
+
+-- Render 3D box
+local function render_simple_3d_box(points, edges, r, g, b, a)
+    for i = 1, #edges do
+        if points[edges[i][1]] ~= nil and points[edges[i][2]] ~= nil then
+            local p1 = { w2s(points[edges[i][1]][1], points[edges[i][1]][2], points[edges[i][1]][3]) }
+            local p2 = { w2s(points[edges[i][2]][1], points[edges[i][2]][2], points[edges[i][2]][3]) }
+            
+            if p1[1] ~= nil and p1[2] ~= nil and p2[1] ~= nil and p2[2] ~= nil then
+                line(p1[1], p1[2], p2[1], p2[2], r, g, b, a)
+            end
+        end
+    end
+end
+
+-- Render text with glow 
 local function render_text_with_glow(x, y, r, g, b, a, flags, size, text)
     if not ui.get(glow_enabled) then
         renderer_text(x, y, r, g, b, a, flags, size, text)
@@ -55,7 +110,6 @@ local function render_text_with_glow(x, y, r, g, b, a, flags, size, text)
     for i = 1, glow_layers do
         local progress = i / glow_layers
         local current_radius = glow_radius * progress
-        -- Smoother alpha falloff using exponential curve
         local alpha_falloff = math.pow(1 - progress, 2.5)
         local current_alpha = math_floor(glow_alpha * alpha_falloff * 0.6)
         
@@ -111,35 +165,6 @@ local function render_text_with_glow(x, y, r, g, b, a, flags, size, text)
     renderer_text(x, y, r, g, b, a, flags, size, text)
 end
 
--- Function to render line with glow
-local function render_line_with_glow(x1, y1, x2, y2, r, g, b, a)
-    if not ui.get(glow_enabled) then
-        line(x1, y1, x2, y2, r, g, b, a)
-        return
-    end
-    
-    local intensity = ui.get(glow_intensity) / 100.0
-    local glow_alpha = math_floor(a * intensity)
-    local base_radius = ui.get(glow_radius)
-    local glow_radius = base_radius * intensity
-    
-    -- Render glow lines with slight offset
-    for i = 1, 8 do
-        local offset = i * 0.5
-        local current_alpha = math_floor(glow_alpha * (1 - i / 8) * 0.3)
-        
-        if current_alpha > 1 then
-            -- Render glow in multiple directions
-            line(x1 - offset, y1 - offset, x2 - offset, y2 - offset, r, g, b, current_alpha)
-            line(x1 + offset, y1 + offset, x2 + offset, y2 + offset, r, g, b, current_alpha)
-            line(x1 - offset, y1 + offset, x2 - offset, y2 + offset, r, g, b, current_alpha)
-            line(x1 + offset, y1 - offset, x2 + offset, y2 - offset, r, g, b, current_alpha)
-        end
-    end
-    
-    -- Render main line
-    line(x1, y1, x2, y2, r, g, b, a)
-end
 
 local get_entities = function(enemy_only, alive_only)
 	local enemy_only = enemy_only ~= nil and enemy_only or false
@@ -286,6 +311,7 @@ local function g_paint_handler()
         if entity_is_alive(idx) and entity_is_enemy(idx) and net_data ~= nil then
             if net_data.lagcomp then
                 local predicted_pos = net_data.predicted_origin
+                local box_r, box_g, box_b, box_a = get_box_color() -- Get custom box color
 
                 local min = vec_add({ entity_get_prop(idx, 'm_vecMins') }, predicted_pos)
                 local max = vec_add({ entity_get_prop(idx, 'm_vecMaxs') }, predicted_pos)
@@ -302,28 +328,21 @@ local function g_paint_handler()
                     {0, 4}, {1, 5}, {2, 6}, {3, 7}, {5, 8}, {7, 8}, {3, 4}
                 }
 
-                for i = 1, #edges do
-                    if i == 1 then
-                        local origin = { entity_get_origin(idx) }
-                        local origin_w2s = { w2s(origin[1], origin[2], origin[3]) }
-                        local min_w2s = { w2s(min[1], min[2], min[3]) }
+                -- Render 3D box
+                render_simple_3d_box(points, edges, box_r, box_g, box_b, box_a)
+                
+                -- Render connection line from origin to predicted position
+                local origin = { entity_get_origin(idx) }
+                local origin_w2s = { w2s(origin[1], origin[2], origin[3]) }
+                local min_w2s = { w2s(min[1], min[2], min[3]) }
 
-                        if origin_w2s[1] ~= nil and min_w2s[1] ~= nil then
-                            render_line_with_glow(origin_w2s[1], origin_w2s[2], min_w2s[1], min_w2s[2], 47, 117, 221, 255)
-                        end
-                    end
-
-                    if points[edges[i][1]] ~= nil and points[edges[i][2]] ~= nil then
-                        local p1 = { w2s(points[edges[i][1]][1], points[edges[i][1]][2], points[edges[i][1]][3]) }
-                        local p2 = { w2s(points[edges[i][2]][1], points[edges[i][2]][2], points[edges[i][2]][3]) }
-            
-                        render_line_with_glow(p1[1], p1[2], p2[1], p2[2], 47, 117, 221, 255)
-                    end
+                if origin_w2s[1] ~= nil and origin_w2s[2] ~= nil and min_w2s[1] ~= nil and min_w2s[2] ~= nil then
+                    line(origin_w2s[1], origin_w2s[2], min_w2s[1], min_w2s[2], box_r, box_g, box_b, box_a)
                 end
             end
 
             local text = {
-                [0] = '', [1] = 'LAG COMP BREAKER',
+                [0] = '', [1] = 'LAG COM BREAKER',
                 [2] = 'SHIFTING TICKBASE'
             }
 
